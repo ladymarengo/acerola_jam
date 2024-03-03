@@ -140,6 +140,7 @@ fn mouse_motion(
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     mut selected: ResMut<SelectedEntity>,
     mut query: Query<(&mut Phase, &mut TextureAtlas, &Transform, Entity)>,
+    texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     if let Some(cursor_coords) = cursor_coords.0 {
         if mouse_button_input.just_pressed(MouseButton::Left) {
@@ -182,6 +183,11 @@ fn mouse_motion(
                     }
                 }
             }
+        } else if mouse_button_input.just_pressed(MouseButton::Right) {
+            for (_phase, _sprite, _transform, entity) in &query {
+                commands.entity(entity).despawn();
+            }
+            spawn_shapes(commands, asset_server, texture_atlas_layouts);
         }
     }
 }
