@@ -3,25 +3,6 @@ use bevy::{prelude::*, window::PrimaryWindow};
 const WINDOW_WIDTH: f32 = 1200.0;
 const WINDOW_HEIGHT: f32 = 720.0;
 
-#[derive(Component)]
-struct Phase(u8);
-
-#[derive(Component)]
-struct MainCamera;
-
-#[derive(Resource)]
-struct SelectedEntity(Option<SelectionOptions>);
-
-struct SelectionOptions {
-    entity: Entity,
-    sprite: Entity,
-    phase: u8,
-    coords: Vec3,
-}
-
-#[derive(Resource)]
-struct CursorCoords(Option<Vec2>);
-
 fn main() {
     println!("Hello, jam!");
     App::new()
@@ -43,6 +24,7 @@ fn main() {
                 bevy::window::close_on_esc,
                 update_cursor_coords,
                 mouse_motion,
+                update_cells_position,
             ),
         )
         .run();
@@ -64,6 +46,31 @@ fn update_cursor_coords(
         .cursor_position()
         .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
         .map(|ray| ray.origin.truncate());
+}
+
+fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>) {
+    let mut possible_drop = None;
+    for (transform, entity) in &query {
+        let mut drop = true;
+        for (other_transform, other_entity) in &query {
+            if transform.translation.y == -240.0
+                || (entity != other_entity
+                    && transform.translation.x == other_transform.translation.x
+                    && transform.translation.y == other_transform.translation.y + 120.0)
+            {
+                drop = false;
+            }
+        }
+        if drop {
+            possible_drop = Some(entity);
+            break;
+        }
+    }
+    if let Some(entity) = possible_drop {
+        if let Ok((mut transform, _entity)) = query.get_mut(entity) {
+            transform.translation.y -= 20.0;
+        }
+    }
 }
 
 fn spawn_shapes(
@@ -88,6 +95,7 @@ fn spawn_shapes(
                     ..default()
                 },
                 Phase(0),
+                Cell,
             ));
         }
     }
@@ -145,3 +153,25 @@ fn mouse_motion(
         }
     }
 }
+
+#[derive(Component)]
+struct Phase(u8);
+
+#[derive(Component)]
+struct MainCamera;
+
+#[derive(Component)]
+struct Cell;
+
+#[derive(Resource)]
+struct SelectedEntity(Option<SelectionOptions>);
+
+struct SelectionOptions {
+    entity: Entity,
+    sprite: Entity,
+    phase: u8,
+    coords: Vec3,
+}
+
+#[derive(Resource)]
+struct CursorCoords(Option<Vec2>);
