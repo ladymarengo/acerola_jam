@@ -60,6 +60,7 @@ fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>)
                     && transform.translation.y == other_transform.translation.y + 120.0)
             {
                 drop = false;
+				break;
             }
         }
         if drop {
@@ -81,7 +82,7 @@ fn spawn_new_cells(
     query: Query<&Transform, With<Cell>>,
 ) {
     let texture = asset_server.load("test_shapes.png");
-    let layout = TextureAtlasLayout::from_grid(Vec2::new(100.0, 100.0), 3, 2, None, None);
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(100.0, 100.0), 4, 3, None, None);
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
     for x in (-240..=240).step_by(120) {
@@ -93,13 +94,14 @@ fn spawn_new_cells(
                     texture: texture.clone(),
                     atlas: TextureAtlas {
                         layout: texture_atlas_layout.clone(),
-                        index: 0,
+                        index: 5,
                     },
                     transform: Transform::from_xyz(x as f32, 360.0, 0.0),
                     ..default()
                 },
                 Phase(0),
                 Cell,
+				Corrupted(true),
             ));
         }
     }
@@ -111,7 +113,7 @@ fn spawn_shapes(
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     let texture = asset_server.load("test_shapes.png");
-    let layout = TextureAtlasLayout::from_grid(Vec2::new(100.0, 100.0), 3, 2, None, None);
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(100.0, 100.0), 4, 3, None, None);
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
     for x in (-240..=240).step_by(120) {
@@ -128,6 +130,7 @@ fn spawn_shapes(
                 },
                 Phase(0),
                 Cell,
+				Corrupted(false),
             ));
         }
     }
@@ -160,7 +163,9 @@ fn mouse_motion(
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
                             phase.0 += 1;
-                            sprite.index = if phase.0 < 5 { phase.0.into() } else { 4 };
+							if phase.0 < 5 {
+								sprite.index += 1;
+							}
                         }
                     } else {
                         let sprite = commands
@@ -200,6 +205,9 @@ struct MainCamera;
 
 #[derive(Component)]
 struct Cell;
+
+#[derive(Component)]
+struct Corrupted(bool);
 
 #[derive(Resource)]
 struct SelectedEntity(Option<SelectionOptions>);
