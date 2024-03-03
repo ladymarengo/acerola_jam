@@ -25,6 +25,7 @@ fn main() {
                 update_cursor_coords,
                 mouse_motion,
                 update_cells_position,
+                spawn_new_cells,
             ),
         )
         .run();
@@ -69,6 +70,37 @@ fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>)
     if let Some(entity) = possible_drop {
         if let Ok((mut transform, _entity)) = query.get_mut(entity) {
             transform.translation.y -= 20.0;
+        }
+    }
+}
+
+fn spawn_new_cells(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    query: Query<&Transform, With<Cell>>,
+) {
+    let texture = asset_server.load("test_shapes.png");
+    let layout = TextureAtlasLayout::from_grid(Vec2::new(100.0, 100.0), 3, 2, None, None);
+    let texture_atlas_layout = texture_atlas_layouts.add(layout);
+
+    for x in (-240..=240).step_by(120) {
+        if !query.iter().any(|transform| {
+            transform.translation.x == x as f32 && transform.translation.y >= 240.0
+        }) {
+            commands.spawn((
+                SpriteSheetBundle {
+                    texture: texture.clone(),
+                    atlas: TextureAtlas {
+                        layout: texture_atlas_layout.clone(),
+                        index: 0,
+                    },
+                    transform: Transform::from_xyz(x as f32, 360.0, 0.0),
+                    ..default()
+                },
+                Phase(0),
+                Cell,
+            ));
         }
     }
 }
@@ -136,7 +168,7 @@ fn mouse_motion(
                                 transform: Transform::from_xyz(
                                     transform.translation.x,
                                     transform.translation.y,
-                                    0.0,
+                                    1.0,
                                 ),
                                 ..default()
                             })
