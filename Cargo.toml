@@ -9,6 +9,7 @@ resolver = "2"
 
 [dependencies]
 bevy = "0.13.0"
+rand = "0.8.5"
 
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]

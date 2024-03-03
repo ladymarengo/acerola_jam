@@ -1,4 +1,5 @@
 use bevy::{prelude::*, window::PrimaryWindow};
+use rand::Rng;
 
 const WINDOW_WIDTH: f32 = 1200.0;
 const WINDOW_HEIGHT: f32 = 720.0;
@@ -60,7 +61,7 @@ fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>)
                     && transform.translation.y == other_transform.translation.y + 120.0)
             {
                 drop = false;
-				break;
+                break;
             }
         }
         if drop {
@@ -85,23 +86,26 @@ fn spawn_new_cells(
     let layout = TextureAtlasLayout::from_grid(Vec2::new(100.0, 100.0), 4, 3, None, None);
     let texture_atlas_layout = texture_atlas_layouts.add(layout);
 
+    let mut rng = rand::thread_rng();
+
     for x in (-240..=240).step_by(120) {
         if !query.iter().any(|transform| {
             transform.translation.x == x as f32 && transform.translation.y >= 240.0
         }) {
+            let corrupted = rng.gen::<f64>() < 0.4;
             commands.spawn((
                 SpriteSheetBundle {
                     texture: texture.clone(),
                     atlas: TextureAtlas {
                         layout: texture_atlas_layout.clone(),
-                        index: 5,
+                        index: if corrupted { 5 } else { 0 },
                     },
                     transform: Transform::from_xyz(x as f32, 360.0, 0.0),
                     ..default()
                 },
                 Phase(0),
                 Cell,
-				Corrupted(true),
+                Corrupted(corrupted),
             ));
         }
     }
@@ -130,7 +134,7 @@ fn spawn_shapes(
                 },
                 Phase(0),
                 Cell,
-				Corrupted(false),
+                Corrupted(false),
             ));
         }
     }
@@ -142,12 +146,18 @@ fn mouse_motion(
     cursor_coords: Res<CursorCoords>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     mut selected: ResMut<SelectedEntity>,
-    mut query: Query<(&mut Phase, &mut TextureAtlas, &Transform, Entity)>,
+    mut query: Query<(
+        &mut Phase,
+        &mut TextureAtlas,
+        &Transform,
+        Entity,
+        &mut Corrupted,
+    )>,
     texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
     if let Some(cursor_coords) = cursor_coords.0 {
         if mouse_button_input.just_pressed(MouseButton::Left) {
-            for (mut phase, mut sprite, transform, entity) in &mut query {
+            for (mut phase, mut sprite, transform, entity, mut corrupted) in &mut query {
                 if (transform.translation.x - cursor_coords.x).abs() < 50.0
                     && (transform.translation.y - cursor_coords.y).abs() < 50.0
                 {
@@ -159,13 +169,23 @@ fn mouse_motion(
                             && (transform.translation.x - selection.coords.x).abs() < 130.0
                             && (transform.translation.y - selection.coords.y).abs() < 130.0
                         {
+                            phase.0 += 1;
+
+                            let mut rng = rand::thread_rng();
+                            if (corrupted.0 || selection.corrupted)
+                                && !(corrupted.0 && selection.corrupted)
+                            {
+                                corrupted.0 = rng.gen::<f64>() < 0.6;
+                            }
+                            if phase.0 < 5 {
+                                sprite.index += 1;
+                            }
+                            if corrupted.0 && sprite.index < 5 {
+                                sprite.index += 5;
+                            }
                             commands.entity(selection.entity).despawn();
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
-                            phase.0 += 1;
-							if phase.0 < 5 {
-								sprite.index += 1;
-							}
                         }
                     } else {
                         let sprite = commands
@@ -184,12 +204,13 @@ fn mouse_motion(
                             sprite,
                             phase: phase.0,
                             coords: transform.translation,
+                            corrupted: corrupted.0,
                         });
                     }
                 }
             }
         } else if mouse_button_input.just_pressed(MouseButton::Right) {
-            for (_phase, _sprite, _transform, entity) in &query {
+            for (_phase, _sprite, _transform, entity, _corrupted) in &query {
                 commands.entity(entity).despawn();
             }
             spawn_shapes(commands, asset_server, texture_atlas_layouts);
@@ -217,6 +238,7 @@ struct SelectionOptions {
     sprite: Entity,
     phase: u8,
     coords: Vec3,
+    corrupted: bool,
 }
 
 #[derive(Resource)]
