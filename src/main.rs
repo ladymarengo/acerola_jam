@@ -12,12 +12,15 @@ struct MainCamera;
 #[derive(Resource)]
 struct SelectedEntity(Option<SelectionOptions>);
 
-// #[derive(Resource)]
 struct SelectionOptions {
     entity: Entity,
     sprite: Entity,
     phase: u8,
+    coords: Vec3,
 }
+
+#[derive(Resource)]
+struct CursorCoords(Option<Vec2>);
 
 fn main() {
     println!("Hello, jam!");
@@ -32,13 +35,35 @@ fn main() {
         }))
         .insert_resource(ClearColor(Color::ALICE_BLUE))
         .insert_resource(SelectedEntity(None))
+        .insert_resource(CursorCoords(None))
         .add_systems(Startup, (spawn_camera, spawn_shapes))
-        .add_systems(Update, (bevy::window::close_on_esc, mouse_motion))
+        .add_systems(
+            Update,
+            (
+                bevy::window::close_on_esc,
+                update_cursor_coords,
+                mouse_motion,
+            ),
+        )
         .run();
 }
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
+}
+
+fn update_cursor_coords(
+    q_window: Query<&Window, With<PrimaryWindow>>,
+    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    mut cursor_coords: ResMut<CursorCoords>,
+) {
+    let (camera, camera_transform) = q_camera.single();
+    let window = q_window.single();
+
+    cursor_coords.0 = window
+        .cursor_position()
+        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+        .map(|ray| ray.origin.truncate());
 }
 
 fn spawn_shapes(
@@ -69,33 +94,27 @@ fn spawn_shapes(
 }
 
 fn mouse_motion(
-    q_window: Query<&Window, With<PrimaryWindow>>,
-    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
-    mut query: Query<(&mut Phase, &mut TextureAtlas, &Transform, Entity)>,
-    mouse_button_input: Res<ButtonInput<MouseButton>>,
-    mut selected: ResMut<SelectedEntity>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    cursor_coords: Res<CursorCoords>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    mut selected: ResMut<SelectedEntity>,
+    mut query: Query<(&mut Phase, &mut TextureAtlas, &Transform, Entity)>,
 ) {
-    let (camera, camera_transform) = q_camera.single();
-    let window = q_window.single();
-
-    if let Some(world_position) = window
-        .cursor_position()
-        .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
-        .map(|ray| ray.origin.truncate())
-    {
-
+    if let Some(cursor_coords) = cursor_coords.0 {
         if mouse_button_input.just_pressed(MouseButton::Left) {
             for (mut phase, mut sprite, transform, entity) in &mut query {
-                if (transform.translation.x - world_position.x).abs() < 50.0
-                    && (transform.translation.y - world_position.y).abs() < 50.0
+                if (transform.translation.x - cursor_coords.x).abs() < 50.0
+                    && (transform.translation.y - cursor_coords.y).abs() < 50.0
                 {
                     if let Some(selection) = &selected.0 {
                         if selection.entity == entity {
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
-                        } else if selection.entity != entity && selection.phase == phase.0 {
+                        } else if selection.phase == phase.0
+                            && (transform.translation.x - selection.coords.x).abs() < 130.0
+                            && (transform.translation.y - selection.coords.y).abs() < 130.0
+                        {
                             commands.entity(selection.entity).despawn();
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
@@ -118,6 +137,7 @@ fn mouse_motion(
                             entity,
                             sprite,
                             phase: phase.0,
+                            coords: transform.translation,
                         });
                     }
                 }
