@@ -78,11 +78,13 @@ fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>)
     }
 }
 
-fn spawn_new_cells(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-    query: Query<&Transform, With<Cell>>,
+fn spawn_smiler(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    texture_atlas_layouts: &mut ResMut<Assets<TextureAtlasLayout>>,
+    corrupted: bool,
+    x: f32,
+    y: f32,
 ) {
     let texture_expr = asset_server.load("expressions.png");
     let layout_expr = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 2, 1, None, None);
@@ -92,6 +94,43 @@ fn spawn_new_cells(
     let layout_color = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 3, 2, None, None);
     let texture_atlas_layout_color = texture_atlas_layouts.add(layout_color);
 
+    commands
+        .spawn((
+            SpriteSheetBundle {
+                texture: texture_expr.clone(),
+                atlas: TextureAtlas {
+                    layout: texture_atlas_layout_expr.clone(),
+                    index: if corrupted { 1 } else { 0 },
+                },
+                transform: Transform::from_xyz(x, y, 1.0).with_scale(Vec3::splat(0.5)),
+                ..default()
+            },
+            Phase(0),
+            Cell,
+            Corrupted(corrupted),
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                SpriteSheetBundle {
+                    texture: texture_color.clone(),
+                    atlas: TextureAtlas {
+                        layout: texture_atlas_layout_color.clone(),
+                        index: 0,
+                    },
+                    transform: Transform::from_xyz(0.0, 0.0, -5.0),
+                    ..default()
+                },
+                SmilerColor,
+            ));
+        });
+}
+
+fn spawn_new_cells(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    query: Query<&Transform, With<Cell>>,
+) {
     let mut rng = rand::thread_rng();
 
     for x in (-240..=120).step_by(120) {
@@ -99,36 +138,14 @@ fn spawn_new_cells(
             transform.translation.x == x as f32 && transform.translation.y >= 120.0
         }) {
             let corrupted = rng.gen::<f64>() < 0.7;
-            commands
-                .spawn((
-                    SpriteSheetBundle {
-                        texture: texture_expr.clone(),
-                        atlas: TextureAtlas {
-                            layout: texture_atlas_layout_expr.clone(),
-                            index: if corrupted { 1 } else { 0 },
-                        },
-                        transform: Transform::from_xyz(x as f32, 360.0, 1.0)
-                            .with_scale(Vec3::splat(0.5)),
-                        ..default()
-                    },
-                    Phase(0),
-                    Cell,
-                    Corrupted(corrupted),
-                ))
-                .with_children(|parent| {
-                    parent.spawn((
-                        SpriteSheetBundle {
-                            texture: texture_color.clone(),
-                            atlas: TextureAtlas {
-                                layout: texture_atlas_layout_color.clone(),
-                                index: 0,
-                            },
-                            transform: Transform::from_xyz(0.0, 0.0, -5.0),
-                            ..default()
-                        },
-                        SmilerColor,
-                    ));
-                });
+            spawn_smiler(
+                &mut commands,
+                &asset_server,
+                &mut texture_atlas_layouts,
+                corrupted,
+                x as f32,
+                360.0,
+            );
         }
     }
 }
@@ -138,46 +155,16 @@ fn spawn_smilers(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let texture_expr = asset_server.load("expressions.png");
-    let layout_expr = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 2, 1, None, None);
-    let texture_atlas_layout_expr = texture_atlas_layouts.add(layout_expr);
-
-    let texture_color = asset_server.load("colors.png");
-    let layout_color = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 3, 2, None, None);
-    let texture_atlas_layout_color = texture_atlas_layouts.add(layout_color);
-
     for x in (-240..=120).step_by(120) {
         for y in (-240..=120).step_by(120) {
-            commands
-                .spawn((
-                    SpriteSheetBundle {
-                        texture: texture_expr.clone(),
-                        atlas: TextureAtlas {
-                            layout: texture_atlas_layout_expr.clone(),
-                            index: 0,
-                        },
-                        transform: Transform::from_xyz(x as f32, y as f32, 1.0)
-                            .with_scale(Vec3::splat(0.5)),
-                        ..default()
-                    },
-                    Phase(0),
-                    Cell,
-                    Corrupted(false),
-                ))
-                .with_children(|parent| {
-                    parent.spawn((
-                        SpriteSheetBundle {
-                            texture: texture_color.clone(),
-                            atlas: TextureAtlas {
-                                layout: texture_atlas_layout_color.clone(),
-                                index: 0,
-                            },
-                            transform: Transform::from_xyz(0.0, 0.0, -5.0),
-                            ..default()
-                        },
-                        SmilerColor,
-                    ));
-                });
+            spawn_smiler(
+                &mut commands,
+                &asset_server,
+                &mut texture_atlas_layouts,
+                false,
+                x as f32,
+                y as f32,
+            );
         }
     }
 }
