@@ -26,7 +26,7 @@ fn main() {
             (
                 bevy::window::close_on_esc,
                 update_cursor_coords,
-                mouse_motion,
+                mouse_input,
                 update_cells_position,
                 spawn_new_cells,
             ),
@@ -85,6 +85,7 @@ fn spawn_smiler(
     corrupted: bool,
     x: f32,
     y: f32,
+    map_coords: (i32, i32),
 ) {
     let texture_expr = asset_server.load("expressions.png");
     let layout_expr = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 2, 1, None, None);
@@ -108,6 +109,7 @@ fn spawn_smiler(
             Phase(0),
             Cell,
             Corrupted(corrupted),
+            MapCoords(map_coords),
         ))
         .with_children(|parent| {
             parent.spawn((
@@ -133,9 +135,9 @@ fn spawn_new_cells(
 ) {
     let mut rng = rand::thread_rng();
 
-    for x in (-240..=120).step_by(120) {
+    for (x_index, x_coord) in (-240..=120).step_by(120).enumerate() {
         if !query.iter().any(|transform| {
-            transform.translation.x == x as f32 && transform.translation.y >= 120.0
+            transform.translation.x == x_coord as f32 && transform.translation.y >= 120.0
         }) {
             let corrupted = rng.gen::<f64>() < 0.7;
             spawn_smiler(
@@ -143,8 +145,9 @@ fn spawn_new_cells(
                 &asset_server,
                 &mut texture_atlas_layouts,
                 corrupted,
-                x as f32,
+                x_coord as f32,
                 360.0,
+                (x_index as i32, 3),
             );
         }
     }
@@ -155,21 +158,22 @@ fn spawn_smilers(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    for x in (-240..=120).step_by(120) {
-        for y in (-240..=120).step_by(120) {
+    for (x_index, x_coord) in (-240..=120).step_by(120).enumerate() {
+        for (y_index, y_coord) in (-240..=120).step_by(120).enumerate() {
             spawn_smiler(
                 &mut commands,
                 &asset_server,
                 &mut texture_atlas_layouts,
                 false,
-                x as f32,
-                y as f32,
+                x_coord as f32,
+                y_coord as f32,
+                (x_index as i32, y_index as i32),
             );
         }
     }
 }
 
-fn mouse_motion(
+fn mouse_input(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     cursor_coords: Res<CursorCoords>,
@@ -265,6 +269,9 @@ struct Cell;
 
 #[derive(Component)]
 struct SmilerColor;
+
+#[derive(Component)]
+struct MapCoords((i32, i32));
 
 #[derive(Component)]
 struct Corrupted(bool);
