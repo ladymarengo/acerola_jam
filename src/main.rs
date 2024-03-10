@@ -5,6 +5,10 @@ use rand::Rng;
 
 const WINDOW_WIDTH: f32 = 1200.0;
 const WINDOW_HEIGHT: f32 = 720.0;
+const CELL_SIZE: f32 = 125.0;
+const CELL_INTERVAL: f32 = 25.0;
+const MAP_START_X: f32 = -360.0;
+const MAP_START_Y: f32 = -225.0;
 
 fn main() {
     println!("Hello, jam!");
@@ -17,7 +21,12 @@ fn main() {
             }),
             ..default()
         }))
-        .insert_resource(ClearColor(Color::ALICE_BLUE))
+        .insert_resource(ClearColor(Color::Rgba {
+            red: 0.604,
+            green: 0.749,
+            blue: 0.784,
+            alpha: 1.0,
+        }))
         .insert_resource(SelectedEntity(None))
         .insert_resource(CursorCoords(None))
         .add_systems(Startup, (spawn_camera, spawn_smilers))
@@ -58,10 +67,11 @@ fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>)
     for (transform, entity) in &query {
         let mut drop = true;
         for (other_transform, other_entity) in &query {
-            if transform.translation.y == -240.0
+            if transform.translation.y == MAP_START_Y
                 || (entity != other_entity
                     && transform.translation.x == other_transform.translation.x
-                    && transform.translation.y == other_transform.translation.y + 120.0)
+                    && transform.translation.y
+                        == other_transform.translation.y + CELL_SIZE + CELL_INTERVAL)
             {
                 drop = false;
                 break;
@@ -74,7 +84,7 @@ fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>)
     }
     if let Some(entity) = possible_drop {
         if let Ok((mut transform, _entity)) = query.get_mut(entity) {
-            transform.translation.y -= 20.0;
+            transform.translation.y -= 25.0;
         }
     }
 }
@@ -103,7 +113,7 @@ fn spawn_smiler(
                     layout: texture_atlas_layout_expr.clone(),
                     index: if corrupted { 1 } else { 0 },
                 },
-                transform: Transform::from_xyz(x, y, 1.0).with_scale(Vec3::splat(0.5)),
+                transform: Transform::from_xyz(x, y, 1.0).with_scale(Vec3::splat(0.625)),
                 ..default()
             },
             Phase(0),
@@ -135,9 +145,12 @@ fn spawn_new_cells(
 ) {
     let mut rng = rand::thread_rng();
 
-    for x_coord in (-240..=120).step_by(120) {
+    for x_coord in (MAP_START_X as i32..=(MAP_START_X + (CELL_SIZE + CELL_INTERVAL) * 3.0) as i32)
+        .step_by(CELL_SIZE as usize + CELL_INTERVAL as usize)
+    {
         if !query.iter().any(|transform| {
-            transform.translation.x == x_coord as f32 && transform.translation.y >= 120.0
+            transform.translation.x == x_coord as f32
+                && transform.translation.y >= CELL_SIZE + CELL_INTERVAL
         }) {
             let corrupted = rng.gen::<f64>() < 0.7;
             spawn_smiler(
@@ -146,7 +159,7 @@ fn spawn_new_cells(
                 &mut texture_atlas_layouts,
                 corrupted,
                 x_coord as f32,
-                360.0,
+                MAP_START_Y + (CELL_SIZE + CELL_INTERVAL) * 4.0,
             );
         }
     }
@@ -157,8 +170,13 @@ fn spawn_smilers(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    for x_coord in (-240..=120).step_by(120) {
-        for y_coord in (-240..=120).step_by(120) {
+    for x_coord in (MAP_START_X as i32..=(MAP_START_X + (CELL_SIZE + CELL_INTERVAL) * 3.0) as i32)
+        .step_by(CELL_SIZE as usize + CELL_INTERVAL as usize)
+    {
+        for y_coord in (MAP_START_Y as i32
+            ..=(MAP_START_Y + (CELL_SIZE + CELL_INTERVAL) * 3.0) as i32)
+            .step_by(CELL_SIZE as usize + CELL_INTERVAL as usize)
+        {
             spawn_smiler(
                 &mut commands,
                 &asset_server,
@@ -167,6 +185,13 @@ fn spawn_smilers(
                 x_coord as f32,
                 y_coord as f32,
             );
+
+            commands.spawn(SpriteBundle {
+                texture: asset_server.load("cell.png"),
+                transform: Transform::from_xyz(x_coord as f32, y_coord as f32, -10.0)
+                    .with_scale(Vec3::splat(0.625)),
+                ..default()
+            });
         }
     }
 }
@@ -202,8 +227,10 @@ fn mouse_input(
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
                         } else if selection.phase == phase.0
-                            && (transform.translation.x - selection.coords.x).abs() < 130.0
-                            && (transform.translation.y - selection.coords.y).abs() < 130.0
+                            && (transform.translation.x - selection.coords.x).abs()
+                                <= (CELL_SIZE + CELL_INTERVAL)
+                            && (transform.translation.y - selection.coords.y).abs()
+                                <= (CELL_SIZE + CELL_INTERVAL)
                         {
                             phase.0 += 1;
 
@@ -228,12 +255,13 @@ fn mouse_input(
                     } else {
                         let sprite = commands
                             .spawn(SpriteBundle {
-                                texture: asset_server.load("test_selection.png"),
+                                texture: asset_server.load("selection.png"),
                                 transform: Transform::from_xyz(
                                     transform.translation.x,
                                     transform.translation.y,
                                     1.0,
-                                ),
+                                )
+                                .with_scale(Vec3::splat(0.625)),
                                 ..default()
                             })
                             .id();
