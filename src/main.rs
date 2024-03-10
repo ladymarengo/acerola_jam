@@ -29,6 +29,7 @@ fn main() {
                 mouse_input,
                 update_cells_position,
                 spawn_new_cells,
+                update_corrupted_neighbors,
             ),
         )
         .run();
@@ -85,7 +86,6 @@ fn spawn_smiler(
     corrupted: bool,
     x: f32,
     y: f32,
-    map_coords: (i32, i32),
 ) {
     let texture_expr = asset_server.load("expressions.png");
     let layout_expr = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 2, 1, None, None);
@@ -109,7 +109,7 @@ fn spawn_smiler(
             Phase(0),
             Cell,
             Corrupted(corrupted),
-            MapCoords(map_coords),
+            CorruptedNeighbors(0),
         ))
         .with_children(|parent| {
             parent.spawn((
@@ -135,7 +135,7 @@ fn spawn_new_cells(
 ) {
     let mut rng = rand::thread_rng();
 
-    for (x_index, x_coord) in (-240..=120).step_by(120).enumerate() {
+    for x_coord in (-240..=120).step_by(120) {
         if !query.iter().any(|transform| {
             transform.translation.x == x_coord as f32 && transform.translation.y >= 120.0
         }) {
@@ -147,7 +147,6 @@ fn spawn_new_cells(
                 corrupted,
                 x_coord as f32,
                 360.0,
-                (x_index as i32, 3),
             );
         }
     }
@@ -158,8 +157,8 @@ fn spawn_smilers(
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    for (x_index, x_coord) in (-240..=120).step_by(120).enumerate() {
-        for (y_index, y_coord) in (-240..=120).step_by(120).enumerate() {
+    for x_coord in (-240..=120).step_by(120) {
+        for y_coord in (-240..=120).step_by(120) {
             spawn_smiler(
                 &mut commands,
                 &asset_server,
@@ -167,7 +166,6 @@ fn spawn_smilers(
                 false,
                 x_coord as f32,
                 y_coord as f32,
-                (x_index as i32, y_index as i32),
             );
         }
     }
@@ -258,6 +256,24 @@ fn mouse_input(
     }
 }
 
+fn update_corrupted_neighbors(
+    neighbors: Query<(&Transform, &Corrupted, Entity), With<Cell>>,
+    mut smilers: Query<(&Transform, &mut CorruptedNeighbors, Entity), With<Cell>>,
+) {
+    for (smiler_coords, mut corrupted_neighbors, smiler_id) in &mut smilers {
+        corrupted_neighbors.0 = 0;
+        for (neighbor_coords, corrupted, neighbor_id) in &neighbors {
+            if smiler_id != neighbor_id
+                && corrupted.0
+                && (smiler_coords.translation.x - neighbor_coords.translation.x).abs() < 130.0
+                && (smiler_coords.translation.y - neighbor_coords.translation.y).abs() < 130.0
+            {
+                corrupted_neighbors.0 += 1;
+            }
+        }
+    }
+}
+
 #[derive(Component)]
 struct Phase(u8);
 
@@ -271,10 +287,10 @@ struct Cell;
 struct SmilerColor;
 
 #[derive(Component)]
-struct MapCoords((i32, i32));
+struct Corrupted(bool);
 
 #[derive(Component)]
-struct Corrupted(bool);
+struct CorruptedNeighbors(usize);
 
 #[derive(Resource)]
 struct SelectedEntity(Option<SelectionOptions>);
