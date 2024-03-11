@@ -27,6 +27,25 @@ fn main() {
             blue: 0.784,
             alpha: 1.0,
         }))
+        .insert_resource(AnimationIndices {
+            normal_calm: Indices { first: 0, last: 21 },
+            normal_worried: Indices {
+                first: 22,
+                last: 43,
+            },
+            normal_scared: Indices {
+                first: 44,
+                last: 59,
+            },
+            corrupted_calm: Indices {
+                first: 60,
+                last: 79,
+            },
+            corrupted_happy: Indices {
+                first: 80,
+                last: 99,
+            },
+        })
         .insert_resource(SelectedEntity(None))
         .insert_resource(CursorCoords(None))
         .add_systems(Startup, (spawn_camera, spawn_smilers))
@@ -62,7 +81,7 @@ fn update_cursor_coords(
         .map(|ray| ray.origin.truncate());
 }
 
-fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Cell>>) {
+fn update_cells_position(mut query: Query<(&mut Transform, Entity), With<Smiler>>) {
     let mut possible_drop = None;
     for (transform, entity) in &query {
         let mut drop = true;
@@ -116,10 +135,16 @@ fn spawn_smiler(
                 transform: Transform::from_xyz(x, y, 1.0).with_scale(Vec3::splat(0.625)),
                 ..default()
             },
-            Phase(0),
-            Cell,
-            Corrupted(corrupted),
-            CorruptedNeighbors(0),
+            Smiler {
+                phase: 0,
+                corrupted,
+                corrupted_neighbors: 0,
+                state: if corrupted {
+                    SmilerState::CorruptedCalm
+                } else {
+                    SmilerState::NormalCalm
+                },
+            },
         ))
         .with_children(|parent| {
             parent.spawn((
@@ -141,7 +166,7 @@ fn spawn_new_cells(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-    query: Query<&Transform, With<Cell>>,
+    query: Query<&Transform, With<Smiler>>,
 ) {
     let mut rng = rand::thread_rng();
 
@@ -204,11 +229,10 @@ fn mouse_input(
     mut selected: ResMut<SelectedEntity>,
     mut query: Query<
         (
-            &mut Phase,
+            &mut Smiler,
             &mut TextureAtlas,
             &Transform,
             Entity,
-            &mut Corrupted,
             &Children,
         ),
         Without<SmilerColor>,
@@ -218,7 +242,7 @@ fn mouse_input(
 ) {
     if let Some(cursor_coords) = cursor_coords.0 {
         if mouse_button_input.just_pressed(MouseButton::Left) {
-            for (mut phase, mut sprite, transform, entity, mut corrupted, children) in &mut query {
+            for (mut smiler, mut sprite, transform, entity, children) in &mut query {
                 if (transform.translation.x - cursor_coords.x).abs() < 50.0
                     && (transform.translation.y - cursor_coords.y).abs() < 50.0
                 {
@@ -226,26 +250,26 @@ fn mouse_input(
                         if selection.entity == entity {
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
-                        } else if selection.phase == phase.0
+                        } else if selection.phase == smiler.phase
                             && (transform.translation.x - selection.coords.x).abs()
                                 <= (CELL_SIZE + CELL_INTERVAL)
                             && (transform.translation.y - selection.coords.y).abs()
                                 <= (CELL_SIZE + CELL_INTERVAL)
                         {
-                            phase.0 += 1;
+                            smiler.phase += 1;
 
                             let mut rng = rand::thread_rng();
-                            if (corrupted.0 || selection.corrupted)
-                                && !(corrupted.0 && selection.corrupted)
+                            if (smiler.corrupted || selection.corrupted)
+                                && !(smiler.corrupted && selection.corrupted)
                             {
-                                corrupted.0 = rng.gen::<f64>() < 0.9;
+                                smiler.corrupted = rng.gen::<f64>() < 0.9;
                             }
-                            if phase.0 < 6 {
+                            if smiler.phase < 6 {
                                 let child = children.first().unwrap();
                                 let mut color_sprite = colors.get_mut(*child).unwrap();
                                 color_sprite.index += 1;
                             }
-                            if corrupted.0 && sprite.index < 1 {
+                            if smiler.corrupted && sprite.index < 1 {
                                 sprite.index += 1;
                             }
                             commands.entity(selection.entity).despawn_recursive();
@@ -268,15 +292,15 @@ fn mouse_input(
                         selected.0 = Some(SelectionOptions {
                             entity,
                             sprite,
-                            phase: phase.0,
+                            phase: smiler.phase,
                             coords: transform.translation,
-                            corrupted: corrupted.0,
+                            corrupted: smiler.corrupted,
                         });
                     }
                 }
             }
         } else if mouse_button_input.just_pressed(MouseButton::Right) {
-            for (_phase, _sprite, _transform, entity, _corrupted, _children) in &query {
+            for (_smiler, _sprite, _transform, entity, _children) in &query {
                 commands.entity(entity).despawn_recursive();
             }
             spawn_smilers(commands, asset_server, texture_atlas_layouts);
@@ -333,3 +357,34 @@ struct SelectionOptions {
 
 #[derive(Resource)]
 struct CursorCoords(Option<Vec2>);
+
+#[derive(Resource)]
+struct AnimationIndices {
+    normal_calm: Indices,
+    normal_worried: Indices,
+    normal_scared: Indices,
+    corrupted_calm: Indices,
+    corrupted_happy: Indices,
+}
+
+struct Indices {
+    first: usize,
+    last: usize,
+}
+
+#[derive(Component)]
+enum SmilerState {
+    NormalCalm,
+    NormalWorried,
+    NormalScared,
+    CorruptedCalm,
+    CorruptedHappy,
+}
+
+#[derive(Component)]
+struct Smiler {
+    phase: u8,
+    corrupted: bool,
+    corrupted_neighbors: usize,
+    state: SmilerState,
+}
