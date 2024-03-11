@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
 use bevy::{prelude::*, window::PrimaryWindow};
-use rand::Rng;
+use rand::{random, Rng};
 
 const WINDOW_WIDTH: f32 = 1200.0;
 const WINDOW_HEIGHT: f32 = 720.0;
@@ -58,6 +58,7 @@ fn main() {
                 update_cells_position,
                 spawn_new_cells,
                 update_corrupted_neighbors,
+                update_animation,
             ),
         )
         .run();
@@ -117,7 +118,7 @@ fn spawn_smiler(
     y: f32,
 ) {
     let texture_expr = asset_server.load("expressions.png");
-    let layout_expr = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 2, 1, None, None);
+    let layout_expr = TextureAtlasLayout::from_grid(Vec2::new(200.0, 200.0), 10, 10, None, None);
     let texture_atlas_layout_expr = texture_atlas_layouts.add(layout_expr);
 
     let texture_color = asset_server.load("colors.png");
@@ -137,14 +138,17 @@ fn spawn_smiler(
             },
             Smiler {
                 phase: 0,
-                corrupted,
                 corrupted_neighbors: 0,
                 state: if corrupted {
                     SmilerState::CorruptedCalm
                 } else {
                     SmilerState::NormalCalm
                 },
+                animation_timer: Timer::from_seconds(random::<f32>() * 3.0, TimerMode::Once),
+                animation_playing: false,
+                frame_timer: Timer::from_seconds(0.05, TimerMode::Once),
             },
+            Corrupted(corrupted),
         ))
         .with_children(|parent| {
             parent.spawn((
@@ -230,6 +234,7 @@ fn mouse_input(
     mut query: Query<
         (
             &mut Smiler,
+            &mut Corrupted,
             &mut TextureAtlas,
             &Transform,
             Entity,
@@ -242,7 +247,7 @@ fn mouse_input(
 ) {
     if let Some(cursor_coords) = cursor_coords.0 {
         if mouse_button_input.just_pressed(MouseButton::Left) {
-            for (mut smiler, mut sprite, transform, entity, children) in &mut query {
+            for (mut smiler, mut corrupted, mut sprite, transform, entity, children) in &mut query {
                 if (transform.translation.x - cursor_coords.x).abs() < 50.0
                     && (transform.translation.y - cursor_coords.y).abs() < 50.0
                 {
@@ -259,17 +264,17 @@ fn mouse_input(
                             smiler.phase += 1;
 
                             let mut rng = rand::thread_rng();
-                            if (smiler.corrupted || selection.corrupted)
-                                && !(smiler.corrupted && selection.corrupted)
+                            if (corrupted.0 || selection.corrupted)
+                                && !(corrupted.0 && selection.corrupted)
                             {
-                                smiler.corrupted = rng.gen::<f64>() < 0.9;
+                                corrupted.0 = rng.gen::<f64>() < 0.9;
                             }
                             if smiler.phase < 6 {
                                 let child = children.first().unwrap();
                                 let mut color_sprite = colors.get_mut(*child).unwrap();
                                 color_sprite.index += 1;
                             }
-                            if smiler.corrupted && sprite.index < 1 {
+                            if corrupted.0 && sprite.index < 1 {
                                 sprite.index += 1;
                             }
                             commands.entity(selection.entity).despawn_recursive();
@@ -294,13 +299,13 @@ fn mouse_input(
                             sprite,
                             phase: smiler.phase,
                             coords: transform.translation,
-                            corrupted: smiler.corrupted,
+                            corrupted: corrupted.0,
                         });
                     }
                 }
             }
         } else if mouse_button_input.just_pressed(MouseButton::Right) {
-            for (_smiler, _sprite, _transform, entity, _children) in &query {
+            for (_smiler, _corrupted, _sprite, _transform, entity, _children) in &query {
                 commands.entity(entity).despawn_recursive();
             }
             spawn_smilers(commands, asset_server, texture_atlas_layouts);
@@ -309,19 +314,69 @@ fn mouse_input(
 }
 
 fn update_corrupted_neighbors(
-    neighbors: Query<(&Transform, &Corrupted, Entity), With<Cell>>,
-    mut smilers: Query<(&Transform, &mut CorruptedNeighbors, Entity), With<Cell>>,
+    neighbors: Query<(&Transform, &Corrupted, Entity)>,
+    mut smilers: Query<(&Transform, &mut Smiler, Entity)>,
 ) {
-    for (smiler_coords, mut corrupted_neighbors, smiler_id) in &mut smilers {
-        corrupted_neighbors.0 = 0;
+    for (smiler_coords, mut smiler, smiler_id) in &mut smilers {
+        smiler.corrupted_neighbors = 0;
         for (neighbor_coords, corrupted, neighbor_id) in &neighbors {
             if smiler_id != neighbor_id
                 && corrupted.0
-                && (smiler_coords.translation.x - neighbor_coords.translation.x).abs() < 130.0
-                && (smiler_coords.translation.y - neighbor_coords.translation.y).abs() < 130.0
+                && (smiler_coords.translation.x - neighbor_coords.translation.x).abs()
+                    <= CELL_SIZE + CELL_INTERVAL
+                && (smiler_coords.translation.y - neighbor_coords.translation.y).abs()
+                    <= CELL_SIZE + CELL_INTERVAL
             {
-                corrupted_neighbors.0 += 1;
+                smiler.corrupted_neighbors += 1;
             }
+        }
+    }
+}
+
+fn update_animation(
+    mut query: Query<(&mut Smiler, &Corrupted, &mut TextureAtlas)>,
+    indices: Res<AnimationIndices>,
+    time: Res<Time>,
+) {
+    for (mut smiler, corrupted, mut sprite) in &mut query {
+        smiler.animation_timer.tick(time.delta());
+        smiler.frame_timer.tick(time.delta());
+
+        // println!("nei {}", smiler.corrupted_neighbors);
+        smiler.state = match (corrupted.0, smiler.corrupted_neighbors) {
+            (false, neighbors) if neighbors < 2 => SmilerState::NormalCalm,
+            (false, neighbors) if neighbors > 4 => SmilerState::NormalScared,
+            (false, _) => SmilerState::NormalWorried,
+            (true, neighbors) if neighbors <= 4 => SmilerState::CorruptedCalm,
+            (true, _) => SmilerState::CorruptedHappy,
+        };
+
+        let current_state_indices = match smiler.state {
+            SmilerState::NormalCalm => &indices.normal_calm,
+            SmilerState::NormalWorried => &indices.normal_worried,
+            SmilerState::NormalScared => &indices.normal_scared,
+            SmilerState::CorruptedCalm => &indices.corrupted_calm,
+            SmilerState::CorruptedHappy => &indices.corrupted_happy,
+        };
+
+        if sprite.index >= current_state_indices.first && sprite.index <= current_state_indices.last
+        {
+            if sprite.index == current_state_indices.first {
+                if smiler.animation_timer.just_finished() {
+                    sprite.index += 1;
+                    smiler.frame_timer.reset();
+                }
+            } else if sprite.index == current_state_indices.last {
+                sprite.index = current_state_indices.first;
+                let timer = random::<f32>() * 3.0;
+                smiler.animation_timer = Timer::from_seconds(timer, TimerMode::Once);
+            } else if smiler.frame_timer.just_finished() {
+                sprite.index += 1;
+                smiler.frame_timer.reset();
+            }
+        } else {
+            sprite.index = current_state_indices.first;
+            smiler.animation_timer = Timer::from_seconds(random::<f32>() * 3.0, TimerMode::Once);
         }
     }
 }
@@ -384,7 +439,9 @@ enum SmilerState {
 #[derive(Component)]
 struct Smiler {
     phase: u8,
-    corrupted: bool,
     corrupted_neighbors: usize,
     state: SmilerState,
+    animation_timer: Timer,
+    frame_timer: Timer,
+    animation_playing: bool,
 }
