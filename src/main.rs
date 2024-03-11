@@ -48,7 +48,7 @@ fn main() {
         })
         .insert_resource(SelectedEntity(None))
         .insert_resource(CursorCoords(None))
-        .add_systems(Startup, (spawn_camera, spawn_smilers))
+        .add_systems(Startup, (spawn_camera, spawn_smilers, spawn_stuff))
         .add_systems(
             Update,
             (
@@ -66,6 +66,20 @@ fn main() {
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
+}
+
+fn spawn_stuff(mut commands: Commands,
+    asset_server: Res<AssetServer>,) {
+	commands
+		.spawn(SpriteBundle {
+			texture: asset_server.load("hint.png"),
+			transform: Transform::from_xyz(
+				-515.0,
+				0.0,
+				1.0,
+			).with_scale(Vec3::splat(1.5)),
+			..default()
+		});
 }
 
 fn update_cursor_coords(
@@ -145,7 +159,6 @@ fn spawn_smiler(
                     SmilerState::NormalCalm
                 },
                 animation_timer: Timer::from_seconds(random::<f32>() * 3.0, TimerMode::Once),
-                animation_playing: false,
                 frame_timer: Timer::from_seconds(0.05, TimerMode::Once),
             },
             Corrupted(corrupted),
@@ -345,7 +358,7 @@ fn update_animation(
         // println!("nei {}", smiler.corrupted_neighbors);
         smiler.state = match (corrupted.0, smiler.corrupted_neighbors) {
             (false, neighbors) if neighbors < 2 => SmilerState::NormalCalm,
-            (false, neighbors) if neighbors > 4 => SmilerState::NormalScared,
+            (false, neighbors) if neighbors >= 4 => SmilerState::NormalScared,
             (false, _) => SmilerState::NormalWorried,
             (true, neighbors) if neighbors <= 4 => SmilerState::CorruptedCalm,
             (true, _) => SmilerState::CorruptedHappy,
@@ -443,5 +456,4 @@ struct Smiler {
     state: SmilerState,
     animation_timer: Timer,
     frame_timer: Timer,
-    animation_playing: bool,
 }
