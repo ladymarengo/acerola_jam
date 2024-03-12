@@ -72,14 +72,16 @@ fn main() {
                     update_cells_position,
                     spawn_new_cells,
                     update_corrupted_neighbors,
+                    update_achievements,
                 )
                     .run_if(in_state(GameState::Playing)),
                 update_animation,
                 restart,
+				update_text,
             ),
         )
-        .add_systems(OnEnter(GameState::Ending), (update_text,))
-        .add_systems(OnEnter(GameState::Playing), (update_text,))
+        // .add_systems(OnEnter(GameState::Ending), (update_text,))
+        // .add_systems(OnEnter(GameState::Playing), (update_text,))
         .run();
 }
 
@@ -358,7 +360,7 @@ fn mouse_input_playing(
                             commands.entity(selection.entity).despawn_recursive();
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
-                            if smiler.phase == 2 {
+                            if smiler.phase == 5 {
                                 game_info.current_win_corrupted = corrupted.0;
                                 if corrupted.0 {
                                     game_info.won_corrupted = true;
@@ -510,50 +512,56 @@ fn update_text(
     state: Res<State<GameState>>,
 ) {
     let mut text = query.single_mut();
+	let endings = if game_info.won_corrupted && game_info.won_normal {
+		2
+	} else if game_info.won_corrupted || game_info.won_normal {
+		1
+	} else {
+		0
+	};
+	let achievements = if game_info.achived_all_corrupted {
+		1
+	} else {
+		0
+	};
+	let text_str;
     if *state.get() == GameState::Ending {
-        let endings = if game_info.won_corrupted && game_info.won_normal {
-            2
-        } else if game_info.won_corrupted || game_info.won_normal {
-            1
-        } else {
-            0
-        };
-        let achievements = if game_info.achived_all_corrupted {
-            1
-        } else {
-            0
-        };
         if game_info.current_win_corrupted {
-            text.sections[0].value = format!(
+            text_str = format!(
                 "Congratulations!\n
 				You've built... corrupted Pink Smiler.
 			Was it your goal?\nYou know it will destroy the world now, right?\n
-			Endings: {}/2\n\nSecret achievements: {}/1\n{}",
+			Endings: {}/2\n\nSecret achievements: {}/1",
                 endings,
                 achievements,
-                if game_info.achived_all_corrupted {
-                    "Achievement: corrupted all smilers"
-                } else {
-                    ""
-                }
             );
         } else {
-            text.sections[0].value = format!(
+            text_str = format!(
                 "Congratulations!\n
 			You've built a Pink Smiler!
 			Now it will bring peace and solve all the world problems.
-			What a nice victory!\n\nEndings: {}/2\n\nSecret achievements: {}/1\n{}",
+			What a nice victory!\n\nEndings: {}/2\n\nSecret achievements: {}/1",
                 endings,
-                achievements,
-                if game_info.achived_all_corrupted {
-                    "Achievement: corrupted all smilers"
-                } else {
-                    ""
-                }
+                achievements
             );
         }
     } else {
-        text.sections[0].value = "Can you build a Pink Smiler?".to_string();
+        text_str = "Can you build a Pink Smiler?".to_string();
+    }
+	let ach_str = if game_info.achived_all_corrupted {
+		"Achievement: corrupted all smilers"
+	} else {
+		""
+	};
+	text.sections[0].value = format!{"{}\n\n{}", text_str, ach_str};
+}
+
+fn update_achievements(
+    query: Query<&Corrupted, With<Smiler>>,
+    mut game_info: ResMut<GameInfo>,
+) {
+    if !game_info.achived_all_corrupted && !query.iter().any(|corrupted| !corrupted.0) {
+        game_info.achived_all_corrupted = true;
     }
 }
 
