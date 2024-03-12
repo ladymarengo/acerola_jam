@@ -78,6 +78,8 @@ fn main() {
                 restart,
             ),
         )
+        .add_systems(OnEnter(GameState::Ending), (update_text,))
+        .add_systems(OnEnter(GameState::Playing), (update_text,))
         .run();
 }
 
@@ -131,6 +133,26 @@ fn spawn_stuff(mut commands: Commands, asset_server: Res<AssetServer>) {
                         },
                     ));
                 });
+            parent.spawn((
+                TextBundle::from_section(
+                    "Can you build a Pink Smiler?",
+                    TextStyle {
+                        font: asset_server.load("Marinda.ttf"),
+                        font_size: 30.0,
+                        color: Color::WHITE,
+                    },
+                )
+                .with_text_justify(JustifyText::Center)
+                .with_style(Style {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(810.0),
+                    right: Val::Px(30.0),
+                    top: Val::Px(120.0),
+                    bottom: Val::Px(200.0),
+                    ..default()
+                }),
+                GameText,
+            ));
         });
 }
 
@@ -336,7 +358,7 @@ fn mouse_input_playing(
                             commands.entity(selection.entity).despawn_recursive();
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
-                            if smiler.phase == 3 {
+                            if smiler.phase == 2 {
                                 game_info.current_win_corrupted = corrupted.0;
                                 if corrupted.0 {
                                     game_info.won_corrupted = true;
@@ -381,11 +403,11 @@ fn restart(
     query: Query<Entity, With<Smiler>>,
     texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut next_state: ResMut<NextState<GameState>>,
-    relative_cursor_position_query: Query<&RelativeCursorPosition>,
+    button_query: Query<&RelativeCursorPosition>,
 ) {
-    let relative_cursor_position = relative_cursor_position_query.single();
+    let button = button_query.single();
 
-    if mouse_button_input.just_pressed(MouseButton::Left) && relative_cursor_position.mouse_over() {
+    if mouse_button_input.just_pressed(MouseButton::Left) && button.mouse_over() {
         for entity in &query {
             commands.entity(entity).despawn_recursive();
         }
@@ -482,8 +504,64 @@ fn update_animation(
     }
 }
 
+fn update_text(
+    game_info: Res<GameInfo>,
+    mut query: Query<&mut Text, With<GameText>>,
+    state: Res<State<GameState>>,
+) {
+    let mut text = query.single_mut();
+    if *state.get() == GameState::Ending {
+        let endings = if game_info.won_corrupted && game_info.won_normal {
+            2
+        } else if game_info.won_corrupted || game_info.won_normal {
+            1
+        } else {
+            0
+        };
+        let achievements = if game_info.achived_all_corrupted {
+            1
+        } else {
+            0
+        };
+        if game_info.current_win_corrupted {
+            text.sections[0].value = format!(
+                "Congratulations!\n
+				You've built... corrupted Pink Smiler.
+			Was it your goal?\nYou know it will destroy the world now, right?\n
+			Endings: {}/2\n\nSecret achievements: {}/1\n{}",
+                endings,
+                achievements,
+                if game_info.achived_all_corrupted {
+                    "Achievement: corrupted all smilers"
+                } else {
+                    ""
+                }
+            );
+        } else {
+            text.sections[0].value = format!(
+                "Congratulations!\n
+			You've built a Pink Smiler!
+			Now it will bring peace and solve all the world problems.
+			What a nice victory!\n\nEndings: {}/2\n\nSecret achievements: {}/1\n{}",
+                endings,
+                achievements,
+                if game_info.achived_all_corrupted {
+                    "Achievement: corrupted all smilers"
+                } else {
+                    ""
+                }
+            );
+        }
+    } else {
+        text.sections[0].value = "Can you build a Pink Smiler?".to_string();
+    }
+}
+
 #[derive(Component)]
 struct Phase(u8);
+
+#[derive(Component)]
+struct GameText;
 
 #[derive(Component)]
 struct MainCamera;
