@@ -55,6 +55,12 @@ fn main() {
         })
         .insert_resource(SelectedEntity(None))
         .insert_resource(CursorCoords(None))
+        .insert_resource(GameInfo {
+            current_win_corrupted: false,
+            won_corrupted: false,
+            won_normal: false,
+            achived_all_corrupted: false,
+        })
         .add_systems(Startup, (spawn_camera, spawn_smilers, spawn_stuff))
         .add_systems(
             Update,
@@ -66,9 +72,9 @@ fn main() {
                     update_cells_position,
                     spawn_new_cells,
                     update_corrupted_neighbors,
-                    update_animation,
                 )
                     .run_if(in_state(GameState::Playing)),
+                update_animation,
                 restart,
             ),
         )
@@ -291,22 +297,16 @@ fn mouse_input_playing(
     mouse_button_input: Res<ButtonInput<MouseButton>>,
     mut selected: ResMut<SelectedEntity>,
     mut query: Query<
-        (
-            &mut Smiler,
-            &mut Corrupted,
-            &mut TextureAtlas,
-            &Transform,
-            Entity,
-            &Children,
-        ),
+        (&mut Smiler, &mut Corrupted, &Transform, Entity, &Children),
         Without<SmilerColor>,
     >,
     mut colors: Query<&mut TextureAtlas, With<SmilerColor>>,
     mut next_state: ResMut<NextState<GameState>>,
+    mut game_info: ResMut<GameInfo>,
 ) {
     if let Some(cursor_coords) = cursor_coords.0 {
         if mouse_button_input.just_pressed(MouseButton::Left) {
-            for (mut smiler, mut corrupted, mut sprite, transform, entity, children) in &mut query {
+            for (mut smiler, mut corrupted, transform, entity, children) in &mut query {
                 if (transform.translation.x - cursor_coords.x).abs() < 50.0
                     && (transform.translation.y - cursor_coords.y).abs() < 50.0
                 {
@@ -333,13 +333,16 @@ fn mouse_input_playing(
                                 let mut color_sprite = colors.get_mut(*child).unwrap();
                                 color_sprite.index += 1;
                             }
-                            if corrupted.0 && sprite.index < 1 {
-                                sprite.index += 1;
-                            }
                             commands.entity(selection.entity).despawn_recursive();
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
-                            if smiler.phase == 5 {
+                            if smiler.phase == 3 {
+                                game_info.current_win_corrupted = corrupted.0;
+                                if corrupted.0 {
+                                    game_info.won_corrupted = true;
+                                } else {
+                                    game_info.won_normal = true;
+                                }
                                 next_state.set(GameState::Ending);
                             }
                         }
@@ -415,19 +418,39 @@ fn update_animation(
     mut query: Query<(&mut Smiler, &Corrupted, &mut TextureAtlas)>,
     indices: Res<AnimationIndices>,
     time: Res<Time>,
+    game_info: Res<GameInfo>,
+    state: Res<State<GameState>>,
 ) {
     for (mut smiler, corrupted, mut sprite) in &mut query {
         smiler.animation_timer.tick(time.delta());
         smiler.frame_timer.tick(time.delta());
 
-        // println!("nei {}", smiler.corrupted_neighbors);
-        smiler.state = match (corrupted.0, smiler.corrupted_neighbors) {
-            (false, neighbors) if neighbors < 2 => SmilerState::NormalCalm,
-            (false, neighbors) if neighbors >= 4 => SmilerState::NormalScared,
-            (false, _) => SmilerState::NormalWorried,
-            (true, neighbors) if neighbors <= 4 => SmilerState::CorruptedCalm,
-            (true, _) => SmilerState::CorruptedHappy,
-        };
+        if *state.get() == GameState::Ending {
+            smiler.state = match corrupted.0 {
+                true => {
+                    if game_info.current_win_corrupted {
+                        SmilerState::CorruptedHappy
+                    } else {
+                        SmilerState::CorruptedCalm
+                    }
+                }
+                false => {
+                    if game_info.current_win_corrupted {
+                        SmilerState::NormalScared
+                    } else {
+                        SmilerState::NormalCalm
+                    }
+                }
+            }
+        } else {
+            smiler.state = match (corrupted.0, smiler.corrupted_neighbors) {
+                (false, neighbors) if neighbors < 2 => SmilerState::NormalCalm,
+                (false, neighbors) if neighbors >= 4 => SmilerState::NormalScared,
+                (false, _) => SmilerState::NormalWorried,
+                (true, neighbors) if neighbors <= 4 => SmilerState::CorruptedCalm,
+                (true, _) => SmilerState::CorruptedHappy,
+            };
+        }
 
         let current_state_indices = match smiler.state {
             SmilerState::NormalCalm => &indices.normal_calm,
@@ -521,4 +544,12 @@ struct Smiler {
     state: SmilerState,
     animation_timer: Timer,
     frame_timer: Timer,
+}
+
+#[derive(Resource)]
+struct GameInfo {
+    current_win_corrupted: bool,
+    won_corrupted: bool,
+    won_normal: bool,
+    achived_all_corrupted: bool,
 }
