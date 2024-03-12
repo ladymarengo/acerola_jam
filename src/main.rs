@@ -10,6 +10,12 @@ const CELL_INTERVAL: f32 = 25.0;
 const MAP_START_X: f32 = -360.0;
 const MAP_START_Y: f32 = -225.0;
 
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash)]
+enum GameState {
+    Playing,
+    Ending,
+}
+
 fn main() {
     println!("Hello, jam!");
     App::new()
@@ -21,6 +27,7 @@ fn main() {
             }),
             ..default()
         }))
+        .insert_state(GameState::Playing)
         .insert_resource(ClearColor(Color::Rgba {
             red: 0.604,
             green: 0.749,
@@ -52,13 +59,17 @@ fn main() {
         .add_systems(
             Update,
             (
-                bevy::window::close_on_esc,
-                update_cursor_coords,
-                mouse_input,
-                update_cells_position,
-                spawn_new_cells,
-                update_corrupted_neighbors,
-                update_animation,
+                (
+                    bevy::window::close_on_esc,
+                    update_cursor_coords,
+                    mouse_input_playing,
+                    update_cells_position,
+                    spawn_new_cells,
+                    update_corrupted_neighbors,
+                    update_animation,
+                )
+                    .run_if(in_state(GameState::Playing)),
+                mouse_input_ending.run_if(in_state(GameState::Ending)),
             ),
         )
         .run();
@@ -68,18 +79,12 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn((Camera2dBundle::default(), MainCamera));
 }
 
-fn spawn_stuff(mut commands: Commands,
-    asset_server: Res<AssetServer>,) {
-	commands
-		.spawn(SpriteBundle {
-			texture: asset_server.load("hint.png"),
-			transform: Transform::from_xyz(
-				-515.0,
-				0.0,
-				1.0,
-			).with_scale(Vec3::splat(1.5)),
-			..default()
-		});
+fn spawn_stuff(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn(SpriteBundle {
+        texture: asset_server.load("hint.png"),
+        transform: Transform::from_xyz(-515.0, 0.0, 1.0).with_scale(Vec3::splat(1.5)),
+        ..default()
+    });
 }
 
 fn update_cursor_coords(
@@ -238,7 +243,7 @@ fn spawn_smilers(
     }
 }
 
-fn mouse_input(
+fn mouse_input_playing(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     cursor_coords: Res<CursorCoords>,
@@ -257,6 +262,7 @@ fn mouse_input(
     >,
     texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut colors: Query<&mut TextureAtlas, With<SmilerColor>>,
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
     if let Some(cursor_coords) = cursor_coords.0 {
         if mouse_button_input.just_pressed(MouseButton::Left) {
@@ -293,6 +299,9 @@ fn mouse_input(
                             commands.entity(selection.entity).despawn_recursive();
                             commands.entity(selection.sprite).despawn();
                             selected.0 = None;
+                            if smiler.phase == 5 {
+                                next_state.set(GameState::Ending);
+                            }
                         }
                     } else {
                         let sprite = commands
@@ -317,12 +326,25 @@ fn mouse_input(
                     }
                 }
             }
-        } else if mouse_button_input.just_pressed(MouseButton::Right) {
-            for (_smiler, _corrupted, _sprite, _transform, entity, _children) in &query {
-                commands.entity(entity).despawn_recursive();
-            }
-            spawn_smilers(commands, asset_server, texture_atlas_layouts);
         }
+    }
+}
+
+fn mouse_input_ending(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    _cursor_coords: Res<CursorCoords>,
+    mouse_button_input: Res<ButtonInput<MouseButton>>,
+    query: Query<Entity, With<Smiler>>,
+    texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if mouse_button_input.just_pressed(MouseButton::Left) {
+        for entity in &query {
+            commands.entity(entity).despawn_recursive();
+        }
+        spawn_smilers(commands, asset_server, texture_atlas_layouts);
+        next_state.set(GameState::Playing);
     }
 }
 
