@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
-use bevy::{prelude::*, window::PrimaryWindow};
+use bevy::{prelude::*, ui::RelativeCursorPosition, window::PrimaryWindow};
 use rand::{random, Rng};
 
 const WINDOW_WIDTH: f32 = 1200.0;
@@ -69,7 +69,7 @@ fn main() {
                     update_animation,
                 )
                     .run_if(in_state(GameState::Playing)),
-                mouse_input_ending.run_if(in_state(GameState::Ending)),
+                restart,
             ),
         )
         .run();
@@ -85,6 +85,47 @@ fn spawn_stuff(mut commands: Commands, asset_server: Res<AssetServer>) {
         transform: Transform::from_xyz(-515.0, 0.0, 1.0).with_scale(Vec3::splat(1.5)),
         ..default()
     });
+
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            parent
+                .spawn(ButtonBundle {
+                    style: Style {
+                        width: Val::Px(200.0),
+                        height: Val::Px(65.0),
+                        border: UiRect::all(Val::Px(5.0)),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        left: Val::Px(370.0),
+                        top: Val::Px(250.0),
+                        ..default()
+                    },
+                    border_color: BorderColor(Color::WHITE),
+                    background_color: BackgroundColor(Color::rgb(0.455, 0.643, 0.745)),
+                    ..default()
+                })
+                .insert(RelativeCursorPosition::default())
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        "TRY AGAIN",
+                        TextStyle {
+                            font: asset_server.load("Marinda.ttf"),
+                            font_size: 40.0,
+                            color: Color::WHITE,
+                        },
+                    ));
+                });
+        });
 }
 
 fn update_cursor_coords(
@@ -260,7 +301,6 @@ fn mouse_input_playing(
         ),
         Without<SmilerColor>,
     >,
-    texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut colors: Query<&mut TextureAtlas, With<SmilerColor>>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
@@ -330,7 +370,7 @@ fn mouse_input_playing(
     }
 }
 
-fn mouse_input_ending(
+fn restart(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     _cursor_coords: Res<CursorCoords>,
@@ -338,8 +378,11 @@ fn mouse_input_ending(
     query: Query<Entity, With<Smiler>>,
     texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
     mut next_state: ResMut<NextState<GameState>>,
+    relative_cursor_position_query: Query<&RelativeCursorPosition>,
 ) {
-    if mouse_button_input.just_pressed(MouseButton::Left) {
+    let relative_cursor_position = relative_cursor_position_query.single();
+
+    if mouse_button_input.just_pressed(MouseButton::Left) && relative_cursor_position.mouse_over() {
         for entity in &query {
             commands.entity(entity).despawn_recursive();
         }
