@@ -18,12 +18,11 @@ enum GameState {
 }
 
 fn main() {
-    println!("Hello, jam!");
     App::new()
 		.insert_resource(AssetMetaCheck::Never)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "Aberration".into(),
+                title: "Mergerration".into(),
                 resolution: (WINDOW_WIDTH, WINDOW_HEIGHT).into(),
                 ..default()
             }),
@@ -68,7 +67,6 @@ fn main() {
             Update,
             (
                 (
-                    bevy::window::close_on_esc,
                     update_cursor_coords,
                     mouse_input_playing,
                     update_cells_position,
@@ -82,8 +80,6 @@ fn main() {
 				update_text,
             ),
         )
-        // .add_systems(OnEnter(GameState::Ending), (update_text,))
-        // .add_systems(OnEnter(GameState::Playing), (update_text,))
         .run();
 }
 
