@@ -1,3 +1,4 @@
+#![windows_subsystem = "windows"]
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
 use bevy::{asset::AssetMetaCheck, prelude::*, ui::RelativeCursorPosition, window::PrimaryWindow};
