@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 
-use bevy::{prelude::*, ui::RelativeCursorPosition, window::PrimaryWindow};
+use bevy::{asset::AssetMetaCheck, prelude::*, ui::RelativeCursorPosition, window::PrimaryWindow};
 use rand::{random, Rng};
 
 const WINDOW_WIDTH: f32 = 1200.0;
@@ -19,6 +19,7 @@ enum GameState {
 fn main() {
     println!("Hello, jam!");
     App::new()
+		.insert_resource(AssetMetaCheck::Never)
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Aberration".into(),
